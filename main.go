@@ -27,7 +27,7 @@ func main() {
 		panic(err)
 	}
 	wayblDir := homeDir + "/.waybl"
-	println(wayblDir)
+	println("waybl dir: " + wayblDir)
 
 	os.Mkdir(wayblDir, os.ModeDir|0755)
 
@@ -59,9 +59,11 @@ func main() {
 		} else {
 			globalWallpaper = arg
 		}
-
-		makeBlurs(wayblDir, outputWalls)
 	}
+
+	// this function will block until all wallpapers are
+	// blurred
+	makeWallpapers(wayblDir, outputWalls)
 
 	// init
 	checkEntireTree(wayblDir, outputWalls)
@@ -83,15 +85,57 @@ func main() {
 	}
 }
 
-func makeBlurs(dir string, outputWalls map[string]string) {
+func makeWallpapers(dir string, outputWalls map[string]string) {
+	// a channel to monitor task completion
+	done := make(chan bool)
+	tasksLeft := 0
+
 	for output, path := range outputWalls {
-		go makeSingleBlur(dir, output, path)
+		tasksLeft += 2
+
+		// start on blurred
+		go func(output, path string) {
+			println("starting to blur " + output)
+			makeBlurred(dir, output, path)
+			println("done blurring " + output)
+			done <- true
+		}(output, path)
+
+		// start on cropped
+		go func(output, path string) {
+			println("starting to crop " + output)
+			makeCropped(dir, output, path)
+			println("done cropping " + output)
+			done <- true
+		}(output, path)
+	}
+
+	// blocks code until all wallpapers are blurred
+	for tasksLeft > 0 && <-done {
+		tasksLeft--
+	}
+
+	println("all wallpapers created!")
+}
+
+func makeCropped(dir, output, wallpaperPath string) {
+	err := exec.Command(
+		// TODO get geometry of output
+		"convert", wallpaperPath,
+		"-geometry", "1920x1080^",
+		"-gravity", "center",
+		"-crop", "1920x1080+0+0",
+		getNormalWallpaperPath(output, dir),
+	).Run()
+
+	if err != nil {
+		panic(err.Error())
 	}
 }
 
-func makeSingleBlur(dir, output, wallpaperPath string) {
+func makeBlurred(dir, output, wallpaperPath string) {
 	err := exec.Command(
-        // TODO get geometry of output
+		// TODO get geometry of output
 		"convert", wallpaperPath,
 		"-geometry", "1920x1080^",
 		"-gravity", "center",
@@ -151,11 +195,15 @@ func setBlur(output string, newBlur bool, wayblDir string, outputWalls map[strin
 	} else {
 		// set all wallpapers back to normal
 		println("blur on " + output + " now off")
-		setWallpaper(output, outputWalls[output])
+		setWallpaper(output, getNormalWallpaperPath(output, wayblDir))
 	}
 }
 
 func getBlurredWallpaperPath(output string, wayblDir string) string {
+	return wayblDir + "/" + output + "_blur.jpg"
+}
+
+func getNormalWallpaperPath(output string, wayblDir string) string {
 	return wayblDir + "/" + output + ".jpg"
 }
 
