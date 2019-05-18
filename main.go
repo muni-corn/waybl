@@ -55,9 +55,13 @@ func main() {
 		// passed in.
 		if strings.Contains(arg, ":") {
 			split := strings.Split(arg, ":")
-			outputWalls[split[0]] = os.ExpandEnv(split[1])
+            output := split[0]
+            wallpaperPath := os.ExpandEnv(split[1])
+			outputWalls[output] = wallpaperPath
+            go setWallpaper(output, wallpaperPath)
 		} else {
 			globalWallpaper = arg
+            go setWallpaper("*", globalWallpaper)
 		}
 	}
 
